@@ -1,0 +1,582 @@
+<title>Báscula — registro de peso</title>
+<style>
+  :root{
+    --bg:#f4f7f6;
+    --surface:#ffffff;
+    --ink:#17221f;
+    --muted:#5d6e69;
+    --line:#dde5e2;
+    --accent:#0e7a66;
+    --accent-ink:#ffffff;
+    --good:#0e7a66;
+    --warn:#a06b14;
+    --danger:#b3423a;
+    --mono:ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0e1412;
+      --surface:#18201d;
+      --ink:#e8efec;
+      --muted:#8fa19b;
+      --line:#27332f;
+      --accent:#2fbf9f;
+      --accent-ink:#08211c;
+      --good:#2fbf9f;
+      --warn:#d9a04a;
+      --danger:#e07a70;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0e1412; --surface:#18201d; --ink:#e8efec; --muted:#8fa19b; --line:#27332f;
+    --accent:#2fbf9f; --accent-ink:#08211c; --good:#2fbf9f; --warn:#d9a04a; --danger:#e07a70;
+  }
+  :root[data-theme="light"]{
+    --bg:#f4f7f6; --surface:#ffffff; --ink:#17221f; --muted:#5d6e69; --line:#dde5e2;
+    --accent:#0e7a66; --accent-ink:#ffffff; --good:#0e7a66; --warn:#a06b14; --danger:#b3423a;
+  }
+  html{background:var(--bg)}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    -webkit-text-size-adjust:100%;
+  }
+  main{max-width:30rem; margin:0 auto; padding:1.25rem 1rem 3rem; display:flex; flex-direction:column; gap:1rem}
+  header .eyebrow{
+    font-size:.7rem; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); font-weight:700;
+  }
+  header h1{margin:.15rem 0 0; font-size:1.35rem; font-weight:700; text-wrap:balance}
+
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:1rem}
+
+  /* Lectura en vivo */
+  .readout{display:flex; flex-direction:column; align-items:center; gap:.35rem; padding:1.6rem 1rem}
+  .kg{
+    font-size:4.2rem; font-weight:800; line-height:1; letter-spacing:-.02em;
+    font-variant-numeric:tabular-nums;
+  }
+  .kg small{font-size:1.1rem; font-weight:600; color:var(--muted); letter-spacing:0}
+  .status{font-size:.9rem; color:var(--muted); min-height:1.2em; text-align:center}
+  .status.good{color:var(--good); font-weight:600}
+  .status.warn{color:var(--warn)}
+  .status.danger{color:var(--danger)}
+
+  button{
+    font:inherit; border:0; border-radius:12px; padding:.85rem 1rem; font-weight:700; cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+  }
+  button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .btn-primary{background:var(--accent); color:var(--accent-ink); width:100%; font-size:1.05rem}
+  .btn-primary[disabled]{opacity:.55}
+  .btn-ghost{background:transparent; color:var(--accent); border:1px solid var(--line); flex:1}
+  .btn-save{background:transparent; border:1px solid var(--accent); color:var(--accent); width:100%; margin-top:.6rem; display:none}
+  .btn-save.show{display:block}
+  .btn-link{background:none; border:0; color:var(--accent); font-size:.8rem; font-weight:600; padding:.4rem 0 0; text-decoration:underline}
+  .btn-scan{width:100%; flex:none}
+  .btn-scan.primary-scan{background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-size:1.05rem; padding:.95rem 1rem}
+
+  .hint{font-size:.8rem; color:var(--muted); text-align:center; margin:0}
+
+  /* Historial */
+  section h2{font-size:.8rem; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin:.4rem 0 .5rem}
+  ul.history{list-style:none; margin:0; padding:0}
+  ul.history li{
+    display:flex; align-items:baseline; gap:.75rem; padding:.65rem .25rem;
+    border-bottom:1px solid var(--line);
+  }
+  ul.history li:last-child{border-bottom:0}
+  .h-kg{font-weight:700; font-variant-numeric:tabular-nums; min-width:4.6rem}
+  .h-date{color:var(--muted); font-size:.85rem; flex:1}
+  .h-del{background:none; border:0; color:var(--muted); padding:.2rem .45rem; font-size:1rem}
+  .empty{color:var(--muted); font-size:.9rem; padding:.5rem .25rem}
+  .toolbar{display:flex; gap:.6rem; margin-top:.75rem}
+
+  /* Alta manual */
+  form.manual{display:flex; gap:.6rem; margin-top:.75rem}
+  form.manual input{
+    flex:1; font:inherit; padding:.7rem .8rem; border-radius:12px; border:1px solid var(--line);
+    background:var(--bg); color:var(--ink); font-variant-numeric:tabular-nums; min-width:0;
+  }
+  form.manual button{background:var(--surface); border:1px solid var(--line); color:var(--ink)}
+
+  /* Consola de depuración */
+  details{border:1px solid var(--line); border-radius:14px; background:var(--surface)}
+  details summary{padding:.8rem 1rem; font-weight:600; cursor:pointer; color:var(--muted); font-size:.9rem}
+  #debug{
+    font-family:var(--mono); font-size:.72rem; line-height:1.5; color:var(--muted);
+    max-height:16rem; overflow:auto; padding:0 1rem 1rem; margin:0; white-space:pre-wrap; word-break:break-all;
+  }
+  .banner{
+    background:var(--surface); border:1px solid var(--warn); color:var(--warn);
+    border-radius:14px; padding:.9rem 1rem; font-size:.9rem; display:none;
+  }
+  .banner.show{display:block}
+  .toast{
+    position:fixed; left:50%; bottom:1.5rem; transform:translateX(-50%) translateY(150%);
+    background:var(--ink); color:var(--bg); padding:.7rem 1.2rem; border-radius:999px;
+    font-weight:600; font-size:.9rem; transition:transform .25s ease; z-index:10;
+  }
+  .toast.show{transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion: reduce){ .toast{transition:none} }
+</style>
+
+<main>
+  <header>
+    <div class="eyebrow">Báscula ILTECO</div>
+    <h1>Registro de peso</h1>
+  </header>
+
+  <div class="banner" id="banner">
+    Este navegador no tiene Bluetooth web. En iPhone, abre esta página con la app
+    <strong>Bluefy</strong> (gratis en el App Store). En Android o PC usa Chrome o Edge.
+  </div>
+
+  <div class="card readout">
+    <div class="kg"><span id="kg">––,–</span> <small>kg</small></div>
+    <div class="status" id="status">Sin conexión</div>
+    <button class="btn-save" id="btnSave">Guardar esta lectura</button>
+  </div>
+
+  <button class="btn-primary" id="btnConnect">Conectar báscula</button>
+  <button class="btn-ghost btn-scan" id="btnScan">Modo escaneo (báscula de difusión)</button>
+  <p class="hint">Súbete a la báscula para que se encienda su Bluetooth y, sin bajarte, pulsa «Conectar báscula».
+  Si tu báscula no acepta conexiones, usa el modo escaneo.
+  <br><button class="btn-link" id="btnAll">¿No aparece? Mostrar todos los dispositivos</button></p>
+
+  <section>
+    <h2>Historial</h2>
+    <div class="card">
+      <ul class="history" id="history"></ul>
+      <div class="empty" id="empty">Todavía no hay pesos registrados.</div>
+      <div class="toolbar">
+        <button class="btn-ghost" id="btnExport">Exportar CSV</button>
+        <button class="btn-ghost" id="btnCopy">Copiar datos</button>
+      </div>
+      <form class="manual" id="manualForm">
+        <input type="number" inputmode="decimal" step="0.1" min="1" max="300" placeholder="Añadir peso a mano (kg)" id="manualKg">
+        <button type="submit">Añadir</button>
+      </form>
+    </div>
+  </section>
+
+  <details>
+    <summary>Datos técnicos (diagnóstico)</summary>
+    <pre id="debug"></pre>
+  </details>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+/* ================= Estado y utilidades ================= */
+const $ = id => document.getElementById(id);
+const STORE = 'bascula.history.v1';
+let device = null, connected = false;
+let lastSave = { t: 0, kg: 0 };
+
+function loadHistory(){ try{ return JSON.parse(localStorage.getItem(STORE)) || []; }catch(e){ return []; } }
+function saveHistory(h){ localStorage.setItem(STORE, JSON.stringify(h)); }
+
+function fmtKg(kg){ return kg.toLocaleString('es-ES', {minimumFractionDigits:1, maximumFractionDigits:1}); }
+function fmtDate(iso){
+  const d = new Date(iso);
+  return d.toLocaleDateString('es-ES', {day:'numeric', month:'short', year:'numeric'}) + ' · ' +
+         d.toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'});
+}
+
+function renderHistory(){
+  const h = loadHistory();
+  const ul = $('history');
+  ul.innerHTML = '';
+  $('empty').style.display = h.length ? 'none' : 'block';
+  h.forEach((e, i) => {
+    const li = document.createElement('li');
+    const kg = document.createElement('span'); kg.className = 'h-kg'; kg.textContent = fmtKg(e.kg) + ' kg';
+    const dt = document.createElement('span'); dt.className = 'h-date'; dt.textContent = fmtDate(e.t);
+    const del = document.createElement('button'); del.className = 'h-del'; del.textContent = '✕';
+    del.setAttribute('aria-label', 'Borrar registro');
+    del.onclick = () => {
+      const hh = loadHistory(); hh.splice(i, 1); saveHistory(hh); renderHistory();
+    };
+    li.append(kg, dt, del);
+    ul.appendChild(li);
+  });
+}
+
+let toastTimer = null;
+function toast(msg){
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function setStatus(msg, cls){
+  const s = $('status'); s.textContent = msg; s.className = 'status' + (cls ? ' ' + cls : '');
+}
+function setKg(kg){ $('kg').textContent = kg == null ? '––,–' : fmtKg(kg); }
+
+const dbg = [];
+function log(msg){
+  const t = new Date().toLocaleTimeString('es-ES');
+  dbg.push('[' + t + '] ' + msg);
+  if (dbg.length > 300) dbg.shift();
+  $('debug').textContent = dbg.join('\n');
+}
+
+function addEntry(kg, silent){
+  const h = loadHistory();
+  h.unshift({ t: new Date().toISOString(), kg: Math.round(kg * 100) / 100 });
+  saveHistory(h); renderHistory();
+  lastSave = { t: Date.now(), kg };
+  if (!silent) toast('Peso guardado: ' + fmtKg(kg) + ' kg');
+}
+
+/* ================= Decodificación ================= */
+// Servicios BLE habituales en básculas (estándar + propietarios comunes)
+const SERVICES = [
+  0x181d, // Weight Scale (estándar)
+  0x181b, // Body Composition (estándar)
+  0x181c, 0x180f, 0x180a,
+  0xfff0, // Chipsea / OKOK
+  0xffe0, // Yolanda / QN-Scale
+  0xffb0, // ICOMON / Welland
+  0xffc0, 0xffa0, 0xfee0, 0xfee7, 0xfeb0
+];
+
+// Canales heurísticos: cada (offset, orden de bytes, divisor) es un canal candidato.
+// El peso real varía al subirte y luego se estabiliza; los bytes fijos de cabecera no varían nunca.
+let channels = new Map();
+function resetChannels(){ channels = new Map(); }
+
+function feedCandidate(key, kg, trusted){
+  let c = channels.get(key);
+  if (!c) { c = { kg: kg, count: 0, stable: 0, varied: false, trusted: !!trusted }; channels.set(key, c); }
+  if (Math.abs(kg - c.kg) > 0.5) c.varied = true;
+  c.stable = Math.abs(kg - c.kg) <= 0.15 ? c.stable + 1 : 1;
+  c.kg = kg; c.count++;
+}
+
+function bestChannel(){
+  let best = null;
+  for (const c of channels.values()){
+    if (!best) { best = c; continue; }
+    if (c.trusted !== best.trusted) { if (c.trusted) best = c; continue; }
+    if (c.varied !== best.varied) { if (c.varied) best = c; continue; }
+    if (c.count > best.count) best = c;
+  }
+  return best;
+}
+
+function parseStandardWeight(dv){
+  // Weight Measurement 0x2A9D: flags(1) + peso uint16
+  if (dv.byteLength < 3) return null;
+  const flags = dv.getUint8(0);
+  const raw = dv.getUint16(1, true);
+  if (raw === 0xffff) return null;
+  return (flags & 1) ? raw * 0.01 * 0.45359237 : raw * 0.005;
+}
+
+function hex(dv){
+  const b = [];
+  for (let i = 0; i < dv.byteLength; i++) b.push(dv.getUint8(i).toString(16).padStart(2, '0'));
+  return b.join(' ');
+}
+
+function onNotify(ev){
+  const ch = ev.target;
+  const dv = ch.value;
+  const short = ch.uuid.slice(4, 8);
+  log(short + ' ← ' + hex(dv));
+
+  if (short === '2a9d' || short === '2a9c'){
+    const kg = short === '2a9d' ? parseStandardWeight(dv) : null;
+    if (kg != null && kg > 2 && kg < 300) feedCandidate('std', kg, true);
+  }
+  // Heurística sobre cualquier trama: prueba uint16 en cada offset, LE/BE, con divisores típicos
+  for (let i = 0; i + 1 < dv.byteLength; i++){
+    for (const le of [true, false]){
+      const raw = dv.getUint16(i, le);
+      for (const div of [10, 100, 200]){
+        const kg = raw / div;
+        if (kg >= 5 && kg <= 250) feedCandidate(i + (le ? 'L' : 'B') + div, Math.round(kg * 100) / 100);
+      }
+    }
+  }
+  updateLive();
+}
+
+let liveKg = null;
+function updateLive(){
+  const best = bestChannel();
+  if (!best) return;
+  liveKg = best.kg;
+  setKg(liveKg);
+  $('btnSave').classList.add('show');
+
+  const ready = best.trusted ? (best.stable >= 3) : (best.varied && best.stable >= 5 && best.count >= 8);
+  if (ready){
+    setStatus('Peso estable', 'good');
+    // Evita duplicados: no volver a guardar el mismo peso en menos de 2 minutos
+    if (Date.now() - lastSave.t > 120000 || Math.abs(liveKg - lastSave.kg) > 0.3){
+      addEntry(liveKg);
+      setStatus('Peso estable — guardado ✓', 'good');
+    }
+  } else {
+    setStatus('Midiendo…');
+  }
+}
+
+/* ================= Conexión Bluetooth ================= */
+// Filtros para que el selector muestre solo dispositivos que parecen básculas:
+// o anuncian un servicio típico de báscula, o tienen un nombre habitual de báscula.
+const SCALE_FILTERS = [
+  { services: [0x181d] }, { services: [0x181b] },
+  { services: [0xfff0] }, { services: [0xffe0] }, { services: [0xffb0] },
+  { namePrefix: 'Chipsea' }, { namePrefix: 'QN-' }, { namePrefix: 'iScale' },
+  { namePrefix: 'ICOMON' }, { namePrefix: 'CF' }, { namePrefix: 'Scale' },
+  { namePrefix: 'SENSSUN' }, { namePrefix: 'Health' }, { namePrefix: 'AAA' },
+  { namePrefix: 'ILTECO' }
+];
+
+async function connect(showAll){
+  if (connected && device){
+    const d = device;
+    device = null; // desconexión manual: la próxima vez vuelve a mostrar el selector
+    d.gatt.disconnect();
+    $('btnConnect').textContent = 'Conectar báscula';
+    return;
+  }
+  try{
+    if (!device){
+      const opts = showAll
+        ? { acceptAllDevices: true, optionalServices: SERVICES }
+        : { filters: SCALE_FILTERS, optionalServices: SERVICES };
+      device = await navigator.bluetooth.requestDevice(opts);
+      device.addEventListener('gattserverdisconnected', () => {
+        connected = false;
+        $('btnConnect').textContent = 'Reconectar báscula';
+        setStatus(liveKg ? 'Báscula desconectada' : 'Desconectada — súbete a la báscula y reconecta', 'warn');
+        log('Desconectado');
+      });
+    }
+    $('btnConnect').disabled = true;
+    resetChannels();
+    // La báscula solo acepta conexiones unos segundos: reintenta varias veces seguidas
+    let server = null;
+    for (let i = 1; i <= 4 && !server; i++){
+      try{
+        setStatus('Conectando… (intento ' + i + ' de 4)');
+        server = await device.gatt.connect();
+      }catch(e){
+        log('Intento ' + i + ' fallido: ' + e.message);
+        if (i === 4) throw e;
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+    connected = true;
+    log('Conectado a: ' + (device.name || device.id));
+    $('btnConnect').textContent = 'Desconectar';
+    setStatus('Conectada — súbete a la báscula', 'good');
+
+    const services = await server.getPrimaryServices();
+    let subs = 0, looksLikeScale = false;
+    const SCALE_SRV = ['181d','181b','fff0','ffe0','ffb0','ffc0','ffa0','fee0','fee7','feb0'];
+    for (const s of services){
+      if (SCALE_SRV.includes(s.uuid.slice(4, 8))) looksLikeScale = true;
+      let chars = [];
+      try{ chars = await s.getCharacteristics(); }catch(e){}
+      for (const c of chars){
+        log('srv ' + s.uuid.slice(4, 8) + ' · chr ' + c.uuid.slice(4, 8) + ' [' +
+            Object.keys(c.properties).filter(p => c.properties[p]).join(',') + ']');
+        if (c.properties.notify || c.properties.indicate){
+          try{
+            await c.startNotifications();
+            c.addEventListener('characteristicvaluechanged', onNotify);
+            subs++;
+          }catch(e){ log('No se pudo suscribir a ' + c.uuid.slice(4, 8) + ': ' + e.message); }
+        }
+      }
+    }
+    if (looksLikeScale){
+      setStatus('Parece una báscula ✓ — súbete para medir', 'good');
+    } else if (!subs){
+      setStatus('Este dispositivo no parece la báscula — desconecta y prueba otro', 'warn');
+    } else {
+      setStatus('Conectada — súbete a la báscula: si no llegan datos, prueba otro dispositivo', 'warn');
+    }
+  }catch(e){
+    log('Error: ' + e.message);
+    if (!/cancel/i.test(e.message)) setStatus('Error: ' + e.message, 'danger');
+    else setStatus('Sin conexión');
+    if (!connected) device = null;
+  }finally{
+    $('btnConnect').disabled = false;
+  }
+}
+
+/* ================= Modo escaneo (básculas de solo difusión) ================= */
+// Algunas básculas no aceptan conexiones: emiten el peso dentro del anuncio BLE.
+// Este modo escucha todos los anuncios y decodifica sus datos con la misma heurística.
+// Identificadores de fabricante que queremos recibir en los anuncios.
+// La báscula usa 0xffff; los demás se piden solo para diagnóstico.
+const MFR_IDS = [0xffff, 0x0000, 0x004c, 0x0075, 0x00e0, 0x0157, 0x01a8];
+const DEV_KEY = 'bascula.deviceId';
+let scan = null, scanCtl = null, advCount = 0, scanTimer = null, forceDeviceScan = false;
+let knownDevice = null; // báscula ya autorizada: permite pesarse con un solo toque
+
+// Al abrir, recupera la báscula ya autorizada para no tener que elegirla cada vez
+async function recallDevice(){
+  const id = localStorage.getItem(DEV_KEY);
+  if (!id || !navigator.bluetooth || !navigator.bluetooth.getDevices) return;
+  try{
+    const devs = await navigator.bluetooth.getDevices();
+    knownDevice = devs.find(d => d.id === id) || null;
+    if (knownDevice){
+      $('btnScan').textContent = 'Pesarme';
+      $('btnScan').classList.add('primary-scan');
+      setStatus('Báscula recordada — pulsa «Pesarme» y súbete');
+      log('Báscula recordada: ' + (knownDevice.name || knownDevice.id));
+    }
+  }catch(e){ log('getDevices no disponible: ' + e.message); }
+}
+const lastAdv = new Map(); // dedupe: no repetir la misma trama del mismo dispositivo
+function onAdvert(ev){
+  advCount++;
+  const parts = [];
+  if (ev.manufacturerData) ev.manufacturerData.forEach((dv, id) => parts.push(['mfr' + id.toString(16).padStart(4, '0'), dv]));
+  if (ev.serviceData) ev.serviceData.forEach((dv, uuid) => parts.push(['srv' + uuid.slice(4, 8), dv]));
+  const dev = (ev.device.name || ev.device.id.slice(0, 6));
+  if (!parts.length){
+    if (lastAdv.get(dev) !== 'void'){ lastAdv.set(dev, 'void'); log('ADV ' + dev + ' (sin datos, rssi ' + ev.rssi + ')'); }
+    return;
+  }
+  for (const [tag, dv] of parts){
+    const sig = tag + hex(dv);
+    const isNew = lastAdv.get(dev) !== sig;
+    if (isNew){ lastAdv.set(dev, sig); log('ADV ' + dev + ' ' + tag + ' ← ' + hex(dv)); }
+    // Trama ILTECO (difusión): "aa bb" + MAC propia + datos.
+    // Peso confirmado: uint16 little-endian en offset 17, en centésimas de kg.
+    if (dv.byteLength >= 19 && dv.getUint8(0) === 0xaa && dv.getUint8(1) === 0xbb){
+      const kg = dv.getUint16(17, true) / 100;
+      if (isNew) log('ILTECO peso = ' + kg.toFixed(2) + ' kg');
+      if (kg >= 5 && kg <= 250) feedCandidate('ilteco', kg, true);
+      updateLive();
+      continue;
+    }
+    // Otros dispositivos: heurística genérica (solo para diagnóstico)
+    for (let i = 0; i + 1 < dv.byteLength; i++){
+      for (const le of [true, false]){
+        const raw = dv.getUint16(i, le);
+        for (const div of [10, 100, 200]){
+          const kg = raw / div;
+          if (kg >= 5 && kg <= 250) feedCandidate(dev + '|' + tag + '|' + i + (le ? 'L' : 'B') + div, Math.round(kg * 100) / 100);
+        }
+      }
+    }
+  }
+  updateLive();
+}
+
+function stopScan(){
+  if (scan){ try{ scan.stop(); }catch(e){} scan = null; navigator.bluetooth.removeEventListener('advertisementreceived', onAdvert); }
+  if (scanCtl){ try{ scanCtl.abort(); }catch(e){} scanCtl = null; }
+  clearTimeout(scanTimer);
+  $('btnScan').textContent = knownDevice ? 'Pesarme' : 'Modo escaneo (báscula de difusión)';
+}
+
+function scanUnsupported(){
+  const b = $('banner');
+  b.innerHTML = 'Tu navegador no permite leer anuncios BLE. En Chrome de PC: abre ' +
+    '<strong>chrome://flags/#enable-experimental-web-platform-features</strong>, márcalo como ' +
+    '<strong>Enabled</strong> y reinicia Chrome con el botón azul Relaunch.';
+  b.classList.add('show');
+  setStatus('Escaneo no disponible en este navegador', 'warn');
+}
+
+async function toggleScan(){
+  if (scan || scanCtl){ stopScan(); setStatus('Escaneo detenido'); return; }
+  if (!navigator.bluetooth){ scanUnsupported(); return; }
+  resetChannels(); advCount = 0;
+
+  // Vía principal (funciona en Windows): elegir el dispositivo y escuchar SUS anuncios.
+  // El escaneo global requestLEScan no entrega anuncios en Chrome/Windows, así que no se usa.
+  try{
+    let dev = knownDevice;
+    if (!dev){
+      setStatus('Súbete a la báscula y elige "ED:67…" en la lista', 'good');
+      // optionalManufacturerData es imprescindible: sin declararlo, Chrome entrega los
+      // anuncios sin datos de fabricante, que es justo donde la báscula manda el peso (0xffff).
+      dev = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: SERVICES,
+        optionalManufacturerData: MFR_IDS
+      });
+      localStorage.setItem(DEV_KEY, dev.id);
+      knownDevice = dev;
+      $('btnScan').classList.add('primary-scan');
+    }
+    device = dev;
+    if (!dev.watchAdvertisements){ scanUnsupported(); return; }
+    scanCtl = new AbortController();
+    dev.addEventListener('advertisementreceived', onAdvert);
+    await dev.watchAdvertisements({ signal: scanCtl.signal });
+    $('btnScan').textContent = 'Detener escaneo';
+    setStatus('Escuchando a ' + (dev.name || 'la báscula') + '… súbete a pesarte', 'good');
+    log('watchAdvertisements iniciado en ' + (dev.name || dev.id));
+    // Aviso si en 12 s no llega ningún anuncio de ese dispositivo
+    scanTimer = setTimeout(() => {
+      if (scanCtl && advCount === 0){
+        setStatus('No llegan anuncios. Súbete a la báscula y espera; si sigue vacío, mira el aviso', 'warn');
+        scanUnsupported();
+      }
+    }, 12000);
+  }catch(e){
+    if (/cancel/i.test(e.message)){ setStatus('Sin conexión'); }
+    else { log('Error de escaneo: ' + e.message); setStatus('Error de escaneo: ' + e.message, 'danger'); }
+    stopScan();
+  }
+}
+$('btnScan').onclick = toggleScan;
+
+/* ================= Exportar y alta manual ================= */
+function csv(){
+  const h = loadHistory();
+  return 'fecha,peso_kg\n' + h.map(e => e.t + ',' + e.kg).join('\n');
+}
+
+$('btnExport').onclick = async () => {
+  const data = csv();
+  if (navigator.share){
+    try{ await navigator.share({ title: 'Pesos', text: data }); return; }catch(e){}
+  }
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(data);
+  a.download = 'pesos.csv';
+  a.click();
+};
+
+$('btnCopy').onclick = async () => {
+  try{ await navigator.clipboard.writeText(csv()); toast('Datos copiados'); }
+  catch(e){ toast('No se pudo copiar'); }
+};
+
+$('manualForm').onsubmit = ev => {
+  ev.preventDefault();
+  const v = parseFloat($('manualKg').value.replace(',', '.'));
+  if (v >= 1 && v <= 300){ addEntry(v); $('manualKg').value = ''; }
+};
+
+$('btnSave').onclick = () => { if (liveKg != null) addEntry(liveKg); };
+$('btnConnect').onclick = () => connect(false);
+$('btnAll').onclick = () => connect(true);
+
+/* ================= Arranque ================= */
+renderHistory();
+if (!navigator.bluetooth){
+  $('banner').classList.add('show');
+  $('btnConnect').disabled = true;
+  $('btnScan').disabled = true;
+  setStatus('Bluetooth no disponible en este navegador', 'warn');
+} else {
+  recallDevice();
+}
+</script>
