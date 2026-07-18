@@ -221,6 +221,19 @@ function setStatus(msg, cls){
 }
 function setKg(kg){ $('kg').textContent = kg == null ? '––,–' : fmtKg(kg); }
 
+// Describe un error aunque no sea un Error estándar (Bluefy lanza objetos sin .message)
+function errDesc(e){
+  if (!e) return 'error desconocido';
+  if (typeof e === 'string') return e;
+  const parts = [];
+  if (e.name) parts.push(e.name);
+  if (e.message) parts.push(e.message);
+  if (!parts.length){
+    try{ parts.push(JSON.stringify(e)); }catch(_){ parts.push(String(e)); }
+  }
+  return parts.join(': ');
+}
+
 const dbg = [];
 function log(msg){
   const t = new Date().toLocaleTimeString('es-ES');
@@ -510,19 +523,37 @@ async function toggleScan(){
     let dev = knownDevice;
     if (!dev){
       setStatus('Súbete a la báscula y elige "ED:67…" en la lista', 'good');
-      // optionalManufacturerData es imprescindible: sin declararlo, Chrome entrega los
-      // anuncios sin datos de fabricante, que es justo donde la báscula manda el peso (0xffff).
-      dev = await navigator.bluetooth.requestDevice({
-        acceptAllDevices: true,
-        optionalServices: SERVICES,
-        optionalManufacturerData: MFR_IDS
-      });
+      // optionalManufacturerData hace falta en Chrome (si no, oculta los datos de
+      // fabricante donde viene el peso), pero otros navegadores lo rechazan:
+      // se prueban varias combinaciones de menos a más restrictiva.
+      const intentos = [
+        { nombre: 'con manufacturerData', opts: { acceptAllDevices: true, optionalServices: SERVICES, optionalManufacturerData: MFR_IDS } },
+        { nombre: 'con servicios', opts: { acceptAllDevices: true, optionalServices: SERVICES } },
+        { nombre: 'básico', opts: { acceptAllDevices: true } }
+      ];
+      let ultimoError = null;
+      for (const intento of intentos){
+        try{
+          dev = await navigator.bluetooth.requestDevice(intento.opts);
+          log('requestDevice OK (' + intento.nombre + ')');
+          break;
+        }catch(e){
+          ultimoError = e;
+          log('requestDevice falló (' + intento.nombre + '): ' + errDesc(e));
+          if (/cancel|user/i.test(errDesc(e))) throw e; // el usuario cerró el diálogo
+        }
+      }
+      if (!dev) throw ultimoError || new Error('no se pudo abrir el selector');
       localStorage.setItem(DEV_KEY, dev.id);
       knownDevice = dev;
       $('btnScan').classList.add('primary-scan');
     }
     device = dev;
-    if (!dev.watchAdvertisements){ scanUnsupported(); return; }
+    if (typeof dev.watchAdvertisements !== 'function'){
+      log('watchAdvertisements NO disponible en este navegador');
+      scanUnsupported();
+      return;
+    }
     scanCtl = new AbortController();
     dev.addEventListener('advertisementreceived', onAdvert);
     await dev.watchAdvertisements({ signal: scanCtl.signal });
@@ -537,8 +568,9 @@ async function toggleScan(){
       }
     }, 12000);
   }catch(e){
-    if (/cancel/i.test(e.message)){ setStatus('Sin conexión'); }
-    else { log('Error de escaneo: ' + e.message); setStatus('Error de escaneo: ' + e.message, 'danger'); }
+    const d = errDesc(e);
+    if (/cancel/i.test(d)){ setStatus('Sin conexión'); }
+    else { log('Error de escaneo: ' + d); setStatus('Error de escaneo: ' + d, 'danger'); }
     stopScan();
   }
 }
@@ -584,6 +616,14 @@ if (!navigator.bluetooth){
   $('btnScan').disabled = true;
   setStatus('Bluetooth no disponible en este navegador', 'warn');
 } else {
+  // Diagnóstico: qué partes de Web Bluetooth ofrece este navegador
+  const bt = navigator.bluetooth;
+  const proto = window.BluetoothDevice && window.BluetoothDevice.prototype;
+  log('Navegador: ' + navigator.userAgent);
+  log('Soporte → requestDevice:' + (typeof bt.requestDevice === 'function') +
+      ' · watchAdvertisements:' + !!(proto && typeof proto.watchAdvertisements === 'function') +
+      ' · getDevices:' + (typeof bt.getDevices === 'function') +
+      ' · requestLEScan:' + (typeof bt.requestLEScan === 'function'));
   recallDevice();
 }
 </script>
