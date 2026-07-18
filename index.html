@@ -121,10 +121,46 @@
   .toast{
     position:fixed; left:50%; bottom:1.5rem; transform:translateX(-50%) translateY(150%);
     background:var(--ink); color:var(--bg); padding:.7rem 1.2rem; border-radius:999px;
-    font-weight:600; font-size:.9rem; transition:transform .25s ease; z-index:10;
+    font-weight:600; font-size:.9rem; z-index:10;
+    opacity:0; visibility:hidden;
+    transition:transform .25s ease, opacity .25s ease, visibility .25s;
   }
-  .toast.show{transform:translateX(-50%) translateY(0)}
+  .toast.show{transform:translateX(-50%) translateY(0); opacity:1; visibility:visible}
   @media (prefers-reduced-motion: reduce){ .toast{transition:none} }
+
+  /* Color de la serie de datos: validado para contraste en ambos temas */
+  :root{--series:#00836b}
+  @media (prefers-color-scheme: dark){ :root{--series:#1fa587} }
+  :root[data-theme="dark"]{--series:#1fa587}
+  :root[data-theme="light"]{--series:#00836b}
+
+  /* Resumen */
+  .stats{display:grid; grid-template-columns:repeat(2,1fr); gap:.6rem}
+  .tile{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:.8rem .9rem; display:flex; flex-direction:column; gap:.15rem}
+  .t-label{font-size:.68rem; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); font-weight:700}
+  .t-value{font-size:1.45rem; font-weight:700; line-height:1.15}
+  .t-sub{font-size:.75rem; color:var(--muted)}
+
+  /* Gráfica */
+  .range{display:flex; gap:.4rem; margin:0 0 .6rem}
+  .range button{
+    flex:1; background:var(--surface); border:1px solid var(--line); color:var(--muted);
+    border-radius:10px; padding:.5rem .3rem; font-size:.85rem; font-weight:600;
+  }
+  .range button[aria-pressed="true"]{background:var(--accent); color:var(--accent-ink); border-color:var(--accent)}
+  .chart-wrap{position:relative}
+  #chart{display:block; width:100%; touch-action:pan-y}
+  #chart:focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:8px}
+  .chart-empty{color:var(--muted); font-size:.9rem; padding:1.4rem .25rem; text-align:center}
+  .tip{
+    position:absolute; pointer-events:none; background:var(--ink); color:var(--bg);
+    padding:.4rem .6rem; border-radius:8px; font-size:.8rem; font-weight:700;
+    white-space:nowrap; opacity:0; transition:opacity .12s ease;
+    transform:translate(-50%,-145%); font-variant-numeric:tabular-nums;
+  }
+  .tip.show{opacity:1}
+  .tip .tip-date{display:block; font-weight:500; opacity:.8; font-size:.72rem; font-variant-numeric:normal}
+  @media (prefers-reduced-motion: reduce){ .tip{transition:none} }
 </style>
 
 <main>
@@ -139,7 +175,7 @@
   </div>
 
   <div class="card readout">
-    <div class="kg"><span id="kg">––,–</span> <small>kg</small></div>
+    <div class="kg"><span id="kg">––,––</span> <small>kg</small></div>
     <div class="status" id="status">Sin conexión</div>
     <button class="btn-save" id="btnSave">Guardar esta lectura</button>
   </div>
@@ -150,6 +186,43 @@
   Si tu báscula no acepta conexiones, usa el modo escaneo.
   <br><button class="btn-link" id="btnAll">¿No aparece? Mostrar todos los dispositivos</button>
   <button class="btn-link" id="btnForget" hidden>Elegir otra báscula</button></p>
+
+  <section>
+    <h2>Resumen</h2>
+    <div class="stats" id="stats"></div>
+  </section>
+
+  <section>
+    <h2>Evolución del peso</h2>
+    <div class="range" role="group" aria-label="Periodo mostrado">
+      <button type="button" data-days="30" aria-pressed="false">30 días</button>
+      <button type="button" data-days="90" aria-pressed="false">90 días</button>
+      <button type="button" data-days="0" aria-pressed="true">Todo</button>
+    </div>
+    <div class="card">
+      <div class="chart-wrap">
+        <svg id="chart" tabindex="0" role="img" aria-label="Evolución del peso a lo largo del tiempo"></svg>
+        <div class="tip" id="tip" role="status"></div>
+      </div>
+      <div class="chart-empty" id="chartEmpty">Con dos pesadas o más verás aquí tu evolución.</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Ajustes y copia de seguridad</h2>
+    <div class="card">
+      <form class="manual" id="heightForm">
+        <input type="number" inputmode="numeric" step="1" min="100" max="230" placeholder="Tu altura en cm (para el IMC)" id="heightCm">
+        <button type="submit">Guardar</button>
+      </form>
+      <div class="toolbar">
+        <button class="btn-ghost" id="btnBackup">Copia de seguridad</button>
+        <button class="btn-ghost" id="btnRestore">Restaurar</button>
+      </div>
+      <input type="file" id="fileRestore" accept="application/json,.json" hidden>
+      <p class="hint" style="text-align:left; margin:.7rem 0 0">Tus pesos se guardan solo en este navegador. Descarga una copia de vez en cuando para no perderlos si borras los datos o cambias de móvil.</p>
+    </div>
+  </section>
 
   <section>
     <h2>Historial</h2>
@@ -185,7 +258,8 @@ let lastSave = { t: 0, kg: 0 };
 function loadHistory(){ try{ return JSON.parse(localStorage.getItem(STORE)) || []; }catch(e){ return []; } }
 function saveHistory(h){ localStorage.setItem(STORE, JSON.stringify(h)); }
 
-function fmtKg(kg){ return kg.toLocaleString('es-ES', {minimumFractionDigits:1, maximumFractionDigits:1}); }
+// Dos decimales: la báscula manda centésimas de kilo y no se redondean
+function fmtKg(kg){ return kg.toLocaleString('es-ES', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 function fmtDate(iso){
   const d = new Date(iso);
   return d.toLocaleDateString('es-ES', {day:'numeric', month:'short', year:'numeric'}) + ' · ' +
@@ -204,12 +278,227 @@ function renderHistory(){
     const del = document.createElement('button'); del.className = 'h-del'; del.textContent = '✕';
     del.setAttribute('aria-label', 'Borrar registro');
     del.onclick = () => {
-      const hh = loadHistory(); hh.splice(i, 1); saveHistory(hh); renderHistory();
+      const hh = loadHistory(); hh.splice(i, 1); saveHistory(hh); renderAll();
     };
     li.append(kg, dt, del);
     ul.appendChild(li);
   });
 }
+
+/* ================= Resumen y gráfica ================= */
+const HEIGHT_KEY = 'bascula.heightCm';
+const NS = 'http://www.w3.org/2000/svg';
+let rangeDays = 0;        // 0 = todo el historial
+let chartPts = [];        // puntos dibujados actualmente
+let sel = -1;             // punto resaltado
+
+function el(name, attrs){
+  const n = document.createElementNS(NS, name);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  return n;
+}
+
+function asc(){ return loadHistory().slice().sort((a, b) => new Date(a.t) - new Date(b.t)); }
+
+function inRange(list){
+  if (!rangeDays) return list;
+  const cut = Date.now() - rangeDays * 86400000;
+  return list.filter(e => new Date(e.t).getTime() >= cut);
+}
+
+function bmiLabel(b){
+  if (b < 18.5) return 'Por debajo del normal';
+  if (b < 25) return 'Normal';
+  if (b < 30) return 'Sobrepeso';
+  return 'Obesidad';
+}
+
+function tile(label, value, sub){
+  const d = document.createElement('div'); d.className = 'tile';
+  const l = document.createElement('span'); l.className = 't-label'; l.textContent = label;
+  const v = document.createElement('span'); v.className = 't-value'; v.textContent = value;
+  d.append(l, v);
+  if (sub){ const s = document.createElement('span'); s.className = 't-sub'; s.textContent = sub; d.appendChild(s); }
+  return d;
+}
+
+function renderStats(){
+  const all = asc();
+  const box = $('stats');
+  box.innerHTML = '';
+  if (!all.length){
+    box.appendChild(tile('Sin datos', '––,––– kg', 'Pésate para empezar'));
+    return;
+  }
+  const last = all[all.length - 1];
+  box.appendChild(tile('Último peso', fmtKg(last.kg) + ' kg', fmtDate(last.t)));
+
+  if (all.length > 1){
+    const d = last.kg - all[all.length - 2].kg;
+    const flecha = d > 0.005 ? '▲' : (d < -0.005 ? '▼' : '=');
+    const signo = d > 0.005 ? '+' : (d < -0.005 ? '−' : '');
+    box.appendChild(tile('Cambio', flecha + ' ' + signo + fmtKg(Math.abs(d)) + ' kg', 'desde la pesada anterior'));
+  }
+
+  const cut = Date.now() - 7 * 86400000;
+  const semana = all.filter(e => new Date(e.t).getTime() >= cut);
+  if (semana.length){
+    const media = semana.reduce((s, e) => s + e.kg, 0) / semana.length;
+    box.appendChild(tile('Media 7 días', fmtKg(media) + ' kg', semana.length + (semana.length === 1 ? ' pesada' : ' pesadas')));
+  }
+
+  const h = parseFloat(localStorage.getItem(HEIGHT_KEY));
+  if (h > 0){
+    const bmi = last.kg / Math.pow(h / 100, 2);
+    box.appendChild(tile('IMC', bmi.toFixed(1).replace('.', ','), bmiLabel(bmi)));
+  }
+}
+
+// Paso "redondo" para los ejes (1, 2, 5, 10…)
+function niceStep(range, count){
+  const raw = range / count;
+  const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+  const n = raw / pow;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * pow;
+}
+
+function fmtShortDate(t){
+  return new Date(t).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+}
+
+function renderChart(){
+  const svg = $('chart');
+  const empty = $('chartEmpty');
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  hideTip();
+
+  const pts = inRange(asc());
+  chartPts = pts; sel = -1;
+  if (pts.length < 2){
+    svg.setAttribute('height', '0');
+    empty.hidden = false;
+    empty.textContent = pts.length ? 'Con una segunda pesada aparecerá aquí tu evolución.'
+                                   : 'Con dos pesadas o más verás aquí tu evolución.';
+    return;
+  }
+  empty.hidden = true;
+
+  const w = Math.max(260, svg.parentNode.clientWidth || 320);
+  const h = 240;
+  const P = { l: 48, r: 16, t: 16, b: 30 };
+  svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+  svg.setAttribute('height', String(h));
+
+  const xs = pts.map(e => new Date(e.t).getTime());
+  const ys = pts.map(e => e.kg);
+  const x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
+  let y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+  if (y1 - y0 < 1){ const m = (y0 + y1) / 2; y0 = m - 0.5; y1 = m + 0.5; }
+  const pad = (y1 - y0) * 0.18; y0 -= pad; y1 += pad;
+
+  const X = t => P.l + (x1 === x0 ? (w - P.l - P.r) / 2 : (t - x0) / (x1 - x0) * (w - P.l - P.r));
+  const Y = v => P.t + (1 - (v - y0) / (y1 - y0)) * (h - P.t - P.b);
+
+  // Rejilla y etiquetas del eje Y: líneas finas continuas, un paso por encima del fondo
+  const step = niceStep(y1 - y0, 4);
+  for (let v = Math.ceil(y0 / step) * step; v <= y1; v += step){
+    const y = Y(v);
+    svg.appendChild(el('line', { x1: P.l, y1: y, x2: w - P.r, y2: y, stroke: 'var(--line)', 'stroke-width': 1 }));
+    const t = el('text', { x: P.l - 8, y: y + 4, 'text-anchor': 'end', fill: 'var(--muted)', 'font-size': 11, 'font-variant-numeric': 'tabular-nums' });
+    t.textContent = v.toLocaleString('es-ES', { maximumFractionDigits: 1 });
+    svg.appendChild(t);
+  }
+
+  // Etiquetas del eje X: primera, media y última
+  const idxs = pts.length > 2 ? [0, Math.floor((pts.length - 1) / 2), pts.length - 1] : [0, pts.length - 1];
+  idxs.forEach((i, n) => {
+    const t = el('text', {
+      x: X(xs[i]), y: h - 10, fill: 'var(--muted)', 'font-size': 11,
+      'text-anchor': n === 0 ? 'start' : (n === idxs.length - 1 ? 'end' : 'middle')
+    });
+    t.textContent = fmtShortDate(xs[i]);
+    svg.appendChild(t);
+  });
+
+  // Relleno de área (lavado al 10 %) y línea de 2 px
+  const d = pts.map((e, i) => (i ? 'L' : 'M') + X(xs[i]).toFixed(1) + ' ' + Y(ys[i]).toFixed(1)).join(' ');
+  svg.appendChild(el('path', {
+    d: d + ' L' + X(xs[xs.length - 1]).toFixed(1) + ' ' + (h - P.b) + ' L' + X(xs[0]).toFixed(1) + ' ' + (h - P.b) + ' Z',
+    fill: 'var(--series)', opacity: '0.1'
+  }));
+  svg.appendChild(el('path', {
+    d: d, fill: 'none', stroke: 'var(--series)', 'stroke-width': 2,
+    'stroke-linejoin': 'round', 'stroke-linecap': 'round'
+  }));
+
+  // Punto final con anillo del color del fondo, y su valor etiquetado (solo ese)
+  const lx = X(xs[xs.length - 1]), ly = Y(ys[ys.length - 1]);
+  svg.appendChild(el('circle', { cx: lx, cy: ly, r: 5, fill: 'var(--series)', stroke: 'var(--surface)', 'stroke-width': 2 }));
+  const lab = el('text', {
+    x: Math.min(lx, w - P.r), y: Math.max(ly - 14, P.t + 10),
+    'text-anchor': 'end', fill: 'var(--ink)', 'font-size': 12, 'font-weight': 700
+  });
+  lab.textContent = fmtKg(ys[ys.length - 1]) + ' kg';
+  svg.appendChild(lab);
+
+  // Capa de interacción: cruz + punto resaltado + globo con el valor
+  const cross = el('line', { y1: P.t, y2: h - P.b, stroke: 'var(--muted)', 'stroke-width': 1, opacity: 0, x1: 0, x2: 0 });
+  const dot = el('circle', { r: 5, fill: 'var(--series)', stroke: 'var(--surface)', 'stroke-width': 2, opacity: 0, cx: 0, cy: 0 });
+  svg.append(cross, dot);
+
+  function show(i){
+    if (i < 0 || i >= pts.length) return;
+    sel = i;
+    const x = X(xs[i]), y = Y(ys[i]);
+    cross.setAttribute('x1', x); cross.setAttribute('x2', x); cross.setAttribute('opacity', 0.45);
+    dot.setAttribute('cx', x); dot.setAttribute('cy', y); dot.setAttribute('opacity', 1);
+    const tip = $('tip');
+    tip.innerHTML = '';
+    const fecha = document.createElement('span');
+    fecha.className = 'tip-date'; fecha.textContent = fmtDate(pts[i].t);
+    tip.append(document.createTextNode(fmtKg(pts[i].kg) + ' kg'), fecha);
+    tip.style.left = Math.min(Math.max(x, 52), w - 52) + 'px';
+    tip.style.top = y + 'px';
+    tip.classList.add('show');
+  }
+
+  function nearest(clientX){
+    const r = svg.getBoundingClientRect();
+    const x = (clientX - r.left) * (w / r.width);
+    let best = 0, bd = Infinity;
+    xs.forEach((t, i) => { const dd = Math.abs(X(t) - x); if (dd < bd){ bd = dd; best = i; } });
+    return best;
+  }
+
+  // El área sensible cubre toda la zona de datos, no solo los puntos
+  const overlay = el('rect', { x: P.l, y: P.t, width: w - P.l - P.r, height: h - P.t - P.b, fill: 'transparent' });
+  overlay.addEventListener('pointermove', ev => show(nearest(ev.clientX)));
+  overlay.addEventListener('pointerdown', ev => show(nearest(ev.clientX)));
+  overlay.addEventListener('pointerleave', hideTip);
+  svg.appendChild(overlay);
+
+  // Mismo recorrido con teclado que con el dedo
+  svg.onkeydown = ev => {
+    if (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft'){
+      ev.preventDefault();
+      show(sel < 0 ? pts.length - 1 : Math.min(pts.length - 1, Math.max(0, sel + (ev.key === 'ArrowRight' ? 1 : -1))));
+    } else if (ev.key === 'Escape') hideTip();
+  };
+  svg.onblur = hideTip;
+}
+
+function hideTip(){
+  const tip = $('tip');
+  if (tip) tip.classList.remove('show');
+  sel = -1;
+  const svg = $('chart');
+  if (!svg) return;
+  const c = svg.querySelector('line[opacity="0.45"]');
+  if (c) c.setAttribute('opacity', 0);
+  svg.querySelectorAll('circle[opacity="1"]').forEach(n => n.setAttribute('opacity', 0));
+}
+
+function renderAll(){ renderHistory(); renderStats(); renderChart(); }
 
 let toastTimer = null;
 function toast(msg){
@@ -220,7 +509,7 @@ function toast(msg){
 function setStatus(msg, cls){
   const s = $('status'); s.textContent = msg; s.className = 'status' + (cls ? ' ' + cls : '');
 }
-function setKg(kg){ $('kg').textContent = kg == null ? '––,–' : fmtKg(kg); }
+function setKg(kg){ $('kg').textContent = kg == null ? '––,––' : fmtKg(kg); }
 
 // Describe un error aunque no sea un Error estándar (Bluefy lanza objetos sin .message)
 function errDesc(e){
@@ -246,7 +535,7 @@ function log(msg){
 function addEntry(kg, silent){
   const h = loadHistory();
   h.unshift({ t: new Date().toISOString(), kg: Math.round(kg * 100) / 100 });
-  saveHistory(h); renderHistory();
+  saveHistory(h); renderAll();
   lastSave = { t: Date.now(), kg };
   if (!silent) toast('Peso guardado: ' + fmtKg(kg) + ' kg');
 }
@@ -716,6 +1005,80 @@ $('btnCopy').onclick = async () => {
   catch(e){ toast('No se pudo copiar'); }
 };
 
+// Periodo mostrado en la gráfica
+document.querySelectorAll('.range button').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('.range button').forEach(x => x.setAttribute('aria-pressed', 'false'));
+    b.setAttribute('aria-pressed', 'true');
+    rangeDays = parseInt(b.getAttribute('data-days'), 10);
+    renderChart();
+  };
+});
+
+// Redibuja al girar el móvil o cambiar el ancho
+if (window.ResizeObserver){
+  new ResizeObserver(() => renderChart()).observe($('chart').parentNode);
+} else {
+  window.addEventListener('resize', renderChart);
+}
+
+// Altura para el IMC
+$('heightForm').onsubmit = ev => {
+  ev.preventDefault();
+  const v = parseInt($('heightCm').value, 10);
+  if (v >= 100 && v <= 230){ localStorage.setItem(HEIGHT_KEY, String(v)); renderStats(); toast('Altura guardada'); }
+  else toast('Introduce una altura entre 100 y 230 cm');
+};
+
+// Copia de seguridad completa (pesos + altura)
+function backupJson(){
+  return JSON.stringify({
+    formato: 'bascula-ilteco', version: 1,
+    exportado: new Date().toISOString(),
+    alturaCm: localStorage.getItem(HEIGHT_KEY) || null,
+    registros: loadHistory()
+  }, null, 2);
+}
+
+$('btnBackup').onclick = async () => {
+  const data = backupJson();
+  if (navigator.share){
+    try{ await navigator.share({ title: 'Copia de seguridad de pesos', text: data }); return; }catch(e){}
+  }
+  const a = document.createElement('a');
+  a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(data);
+  a.download = 'bascula-copia-' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+};
+
+$('btnRestore').onclick = () => $('fileRestore').click();
+
+$('fileRestore').onchange = ev => {
+  const f = ev.target.files && ev.target.files[0];
+  ev.target.value = '';
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try{
+      const d = JSON.parse(r.result);
+      const nuevos = Array.isArray(d) ? d : (d.registros || d.entries);
+      if (!Array.isArray(nuevos)) throw new Error('el archivo no tiene registros');
+      // Fusiona con lo que ya hay, sin duplicar por fecha
+      const mapa = new Map(loadHistory().map(e => [e.t, e]));
+      let n = 0;
+      nuevos.forEach(e => {
+        if (e && e.t && typeof e.kg === 'number'){ mapa.set(e.t, { t: e.t, kg: e.kg }); n++; }
+      });
+      const fusion = Array.from(mapa.values()).sort((a, b) => new Date(b.t) - new Date(a.t));
+      saveHistory(fusion);
+      if (d.alturaCm){ localStorage.setItem(HEIGHT_KEY, String(d.alturaCm)); $('heightCm').value = d.alturaCm; }
+      renderAll();
+      toast('Restaurados ' + n + ' registros');
+    }catch(e){ toast('No se pudo restaurar: ' + errDesc(e)); }
+  };
+  r.readAsText(f);
+};
+
 $('manualForm').onsubmit = ev => {
   ev.preventDefault();
   const v = parseFloat($('manualKg').value.replace(',', '.'));
@@ -727,7 +1090,9 @@ $('btnConnect').onclick = () => connect(false);
 $('btnAll').onclick = () => connect(true);
 
 /* ================= Arranque ================= */
-renderHistory();
+renderAll();
+const alturaGuardada = localStorage.getItem(HEIGHT_KEY);
+if (alturaGuardada) $('heightCm').value = alturaGuardada;
 if (!navigator.bluetooth){
   $('banner').classList.add('show');
   $('btnConnect').disabled = true;
