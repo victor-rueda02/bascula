@@ -555,14 +555,17 @@ async function toggleScan(){
     await dev.watchAdvertisements({ signal: scanCtl.signal });
     $('btnScan').textContent = 'Detener escaneo';
     setStatus('Escuchando a ' + (dev.name || 'la báscula') + '… súbete a pesarte', 'good');
-    log('watchAdvertisements iniciado en ' + (dev.name || dev.id));
+    log('watchAdvertisements iniciado en ' + (dev.name || dev.id) + ' — esperando anuncios…');
     // Aviso si en 12 s no llega ningún anuncio de ese dispositivo
+    // Aviso escalonado: si no llega ningún anuncio, este navegador no los entrega
     scanTimer = setTimeout(() => {
       if (scanCtl && advCount === 0){
-        setStatus('No llegan anuncios. Súbete a la báscula y espera; si sigue vacío, mira el aviso', 'warn');
-        scanUnsupported();
+        log('Sin anuncios tras 25 s: este navegador no entrega anuncios BLE');
+        setStatus('No llega ningún anuncio — este navegador no puede leer la báscula', 'danger');
+      } else if (scanCtl){
+        log('Anuncios recibidos: ' + advCount);
       }
-    }, 12000);
+    }, 25000);
   }catch(e){
     const d = errDesc(e);
     if (/cancel/i.test(d)){ setStatus('Sin conexión'); }
