@@ -141,7 +141,8 @@
   <button class="btn-ghost btn-scan" id="btnScan">Modo escaneo (báscula de difusión)</button>
   <p class="hint">Súbete a la báscula para que se encienda su Bluetooth y, sin bajarte, pulsa «Conectar báscula».
   Si tu báscula no acepta conexiones, usa el modo escaneo.
-  <br><button class="btn-link" id="btnAll">¿No aparece? Mostrar todos los dispositivos</button></p>
+  <br><button class="btn-link" id="btnAll">¿No aparece? Mostrar todos los dispositivos</button>
+  <button class="btn-link" id="btnForget" hidden>Elegir otra báscula</button></p>
 
   <section>
     <h2>Historial</h2>
@@ -446,6 +447,7 @@ async function recallDevice(){
     if (knownDevice){
       $('btnScan').textContent = 'Pesarme';
       $('btnScan').classList.add('primary-scan');
+      $('btnForget').hidden = false;
       setStatus('Báscula recordada — pulsa «Pesarme» y súbete');
       log('Báscula recordada: ' + (knownDevice.name || knownDevice.id));
     }
@@ -540,6 +542,7 @@ async function toggleScan(){
       localStorage.setItem(DEV_KEY, dev.id);
       knownDevice = dev;
       $('btnScan').classList.add('primary-scan');
+      $('btnForget').hidden = false;
     }
     device = dev;
     if (typeof dev.watchAdvertisements !== 'function'){
@@ -568,6 +571,22 @@ async function toggleScan(){
   }
 }
 $('btnScan').onclick = toggleScan;
+
+// Olvidar el dispositivo elegido para poder seleccionar otro
+function forgetDevice(){
+  stopScan();
+  localStorage.removeItem(DEV_KEY);
+  knownDevice = null; device = null; connected = false;
+  resetChannels(); lastAdv.clear(); liveKg = null;
+  setKg(null);
+  $('btnScan').textContent = 'Modo escaneo (báscula de difusión)';
+  $('btnScan').classList.remove('primary-scan');
+  $('btnForget').hidden = true;
+  $('btnSave').classList.remove('show');
+  setStatus('Dispositivo olvidado — pulsa «Modo escaneo» y elige otro');
+  log('Dispositivo olvidado');
+}
+$('btnForget').onclick = forgetDevice;
 
 /* ================= Exportar y alta manual ================= */
 function csv(){
