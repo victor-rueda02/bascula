@@ -182,6 +182,7 @@
 
   <button class="btn-primary" id="btnConnect">Conectar báscula</button>
   <button class="btn-ghost btn-scan" id="btnScan">Modo escaneo (báscula de difusión)</button>
+  <button class="btn-ghost btn-scan" id="btnScanCR" hidden>Pesarme CR</button>
   <p class="hint">Súbete a la báscula para que se encienda su Bluetooth y, sin bajarte, pulsa «Conectar báscula».
   Si tu báscula no acepta conexiones, usa el modo escaneo.
   <br><button class="btn-link" id="btnAll">¿No aparece? Mostrar todos los dispositivos</button>
@@ -618,7 +619,7 @@ let liveKg = null;
 function updateLive(){
   const best = bestChannel();
   if (!best) return;
-  liveKg = best.kg;
+  liveKg = Math.round((best.kg + scanOffset) * 100) / 100;
   setKg(liveKg);
   $('btnSave').classList.add('show');
 
@@ -732,6 +733,9 @@ const MFR_IDS = [0xffff, 0x0000, 0x004c, 0x0075, 0x00e0, 0x0157, 0x01a8];
 const DEV_KEY = 'bascula.deviceId';
 let scan = null, scanCtl = null, advCount = 0, scanTimer = null, forceDeviceScan = false;
 let knownDevice = null; // báscula ya autorizada: permite pesarse con un solo toque
+let scanOffset = 0;     // «Pesarme CR» (con ropa) resta 0,5 kg a la lectura
+// «Pesarme CR» solo se ofrece con báscula conocida y sin escaneo en curso
+function syncCR(){ $('btnScanCR').hidden = !knownDevice || !!(scan || scanCtl); }
 
 // Al abrir, recupera la báscula ya autorizada para no tener que elegirla cada vez
 async function recallDevice(){
@@ -744,6 +748,7 @@ async function recallDevice(){
       $('btnScan').textContent = 'Pesarme';
       $('btnScan').classList.add('primary-scan');
       $('btnForget').hidden = false;
+      syncCR();
       setStatus('Báscula recordada — pulsa «Pesarme» y súbete');
       log('Báscula recordada: ' + (knownDevice.name || knownDevice.id));
     }
@@ -887,7 +892,9 @@ function stopScan(){
   if (scan){ try{ scan.stop(); }catch(e){} scan = null; navigator.bluetooth.removeEventListener('advertisementreceived', onAdvert); }
   if (scanCtl){ try{ scanCtl.abort(); }catch(e){} scanCtl = null; }
   clearTimeout(scanTimer);
+  scanOffset = 0;
   $('btnScan').textContent = knownDevice ? 'Pesarme' : 'Modo escaneo (báscula de difusión)';
+  syncCR();
 }
 
 function scanUnsupported(){
@@ -946,6 +953,7 @@ async function toggleScan(){
     dev.addEventListener('advertisementreceived', onAdvert);
     await dev.watchAdvertisements({ signal: scanCtl.signal });
     $('btnScan').textContent = 'Detener escaneo';
+    syncCR();
     setStatus('Escuchando a ' + (dev.name || 'la báscula') + '… súbete a pesarte', 'good');
     log('watchAdvertisements iniciado en ' + (dev.name || dev.id) + ' — esperando anuncios…');
     // Aviso si en 12 s no llega ningún anuncio de ese dispositivo
@@ -965,7 +973,8 @@ async function toggleScan(){
     stopScan();
   }
 }
-$('btnScan').onclick = toggleScan;
+$('btnScan').onclick = () => { scanOffset = 0; toggleScan(); };
+$('btnScanCR').onclick = () => { scanOffset = -0.5; toggleScan(); };
 
 // Olvidar el dispositivo elegido para poder seleccionar otro
 function forgetDevice(){
@@ -977,6 +986,7 @@ function forgetDevice(){
   $('btnScan').textContent = 'Modo escaneo (báscula de difusión)';
   $('btnScan').classList.remove('primary-scan');
   $('btnForget').hidden = true;
+  syncCR();
   $('btnSave').classList.remove('show');
   setStatus('Dispositivo olvidado — pulsa «Modo escaneo» y elige otro');
   log('Dispositivo olvidado');
