@@ -188,10 +188,14 @@
 
   <section>
     <h2>Evolución del peso</h2>
-    <div class="range" role="group" aria-label="Periodo mostrado">
+    <div class="range" id="rangeGroup" role="group" aria-label="Periodo mostrado">
       <button type="button" data-days="30" aria-pressed="false">30 días</button>
       <button type="button" data-days="90" aria-pressed="false">90 días</button>
       <button type="button" data-days="0" aria-pressed="true">Todo</button>
+    </div>
+    <div class="range" id="modeGroup" role="group" aria-label="Puntos de la gráfica">
+      <button type="button" data-mode="day" aria-pressed="true">Cada pesada</button>
+      <button type="button" data-mode="week" aria-pressed="false">Media semanal</button>
     </div>
     <div class="card">
       <div class="chart-wrap">
@@ -283,6 +287,9 @@ function renderHistory(){
 const HEIGHT_KEY = 'bascula.heightCm';
 const NS = 'http://www.w3.org/2000/svg';
 let rangeDays = 0;        // 0 = todo el historial
+const MODE_KEY = 'bascula.chartMode';
+let chartMode = 'day';    // 'day' = cada pesada, 'week' = media de lunes a domingo
+try { if (localStorage.getItem(MODE_KEY) === 'week') chartMode = 'week'; } catch(e){}
 let chartPts = [];        // puntos dibujados actualmente
 let sel = -1;             // punto resaltado
 
@@ -296,8 +303,38 @@ function asc(){ return loadHistory().slice().sort((a, b) => new Date(a.t) - new 
 
 function inRange(list){
   if (!rangeDays) return list;
-  const cut = Date.now() - rangeDays * 86400000;
+  let cut = Date.now() - rangeDays * 86400000;
+  // En media semanal, la primera semana entra entera (desde su lunes)
+  if (chartMode === 'week') cut = weekStart(cut);
   return list.filter(e => new Date(e.t).getTime() >= cut);
+}
+
+// Lunes a las 00:00 (hora local) de la semana que contiene t
+function weekStart(t){
+  const d = new Date(t);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d.getTime();
+}
+
+// Una entrada por semana (lunes a domingo) con la media de sus pesadas
+function weeklyAverages(list){
+  const groups = new Map();
+  list.forEach(e => {
+    const k = weekStart(new Date(e.t).getTime());
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(e.kg);
+  });
+  return Array.from(groups.keys()).sort((a, b) => a - b).map(k => {
+    const kgs = groups.get(k);
+    const end = new Date(k); end.setDate(end.getDate() + 6);
+    return {
+      t: new Date(k).toISOString(),
+      kg: kgs.reduce((s, v) => s + v, 0) / kgs.length,
+      label: 'Semana ' + fmtShortDate(k) + ' – ' + fmtShortDate(end.getTime()) + ' · ' +
+             kgs.length + (kgs.length === 1 ? ' pesada' : ' pesadas')
+    };
+  });
 }
 
 function bmiLabel(b){
@@ -366,13 +403,16 @@ function renderChart(){
   while (svg.firstChild) svg.removeChild(svg.firstChild);
   hideTip();
 
-  const pts = inRange(asc());
+  const weekly = chartMode === 'week';
+  const raw = inRange(asc());
+  const pts = weekly ? weeklyAverages(raw) : raw;
   chartPts = pts; sel = -1;
   if (pts.length < 2){
     svg.setAttribute('height', '0');
     empty.hidden = false;
-    empty.textContent = pts.length ? 'Con una segunda pesada aparecerá aquí tu evolución.'
-                                   : 'Con dos pesadas o más verás aquí tu evolución.';
+    if (weekly) empty.textContent = 'Con pesadas en dos semanas distintas verás aquí la media semanal.';
+    else empty.textContent = pts.length ? 'Con una segunda pesada aparecerá aquí tu evolución.'
+                                        : 'Con dos pesadas o más verás aquí tu evolución.';
     return;
   }
   empty.hidden = true;
@@ -425,6 +465,11 @@ function renderChart(){
     'stroke-linejoin': 'round', 'stroke-linecap': 'round'
   }));
 
+  // En media semanal hay pocos puntos: se marca cada semana
+  if (weekly){
+    pts.forEach((e, i) => svg.appendChild(el('circle', { cx: X(xs[i]), cy: Y(ys[i]), r: 3, fill: 'var(--series)' })));
+  }
+
   // Punto final con anillo del color del fondo, y su valor etiquetado (solo ese)
   const lx = X(xs[xs.length - 1]), ly = Y(ys[ys.length - 1]);
   svg.appendChild(el('circle', { cx: lx, cy: ly, r: 5, fill: 'var(--series)', stroke: 'var(--surface)', 'stroke-width': 2 }));
@@ -449,7 +494,7 @@ function renderChart(){
     const tip = $('tip');
     tip.innerHTML = '';
     const fecha = document.createElement('span');
-    fecha.className = 'tip-date'; fecha.textContent = fmtDate(pts[i].t);
+    fecha.className = 'tip-date'; fecha.textContent = pts[i].label || fmtDate(pts[i].t);
     tip.append(document.createTextNode(fmtKg(pts[i].kg) + ' kg'), fecha);
     tip.style.left = Math.min(Math.max(x, 52), w - 52) + 'px';
     tip.style.top = y + 'px';
@@ -1009,11 +1054,23 @@ $('btnCopy').onclick = async () => {
 };
 
 // Periodo mostrado en la gráfica
-document.querySelectorAll('.range button').forEach(b => {
+document.querySelectorAll('#rangeGroup button').forEach(b => {
   b.onclick = () => {
-    document.querySelectorAll('.range button').forEach(x => x.setAttribute('aria-pressed', 'false'));
+    document.querySelectorAll('#rangeGroup button').forEach(x => x.setAttribute('aria-pressed', 'false'));
     b.setAttribute('aria-pressed', 'true');
     rangeDays = parseInt(b.getAttribute('data-days'), 10);
+    renderChart();
+  };
+});
+
+// Cada pesada o media semanal (se recuerda en este dispositivo)
+document.querySelectorAll('#modeGroup button').forEach(b => {
+  b.setAttribute('aria-pressed', String(b.getAttribute('data-mode') === chartMode));
+  b.onclick = () => {
+    document.querySelectorAll('#modeGroup button').forEach(x => x.setAttribute('aria-pressed', 'false'));
+    b.setAttribute('aria-pressed', 'true');
+    chartMode = b.getAttribute('data-mode');
+    try { localStorage.setItem(MODE_KEY, chartMode); } catch(e){}
     renderChart();
   };
 });
